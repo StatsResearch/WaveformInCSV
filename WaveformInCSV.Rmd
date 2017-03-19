@@ -32,6 +32,7 @@ knitr::opts_chunk$set(echo = TRUE)
 suppressMessages({suppressWarnings({
   library(dplyr)
   library(tidyr)
+  library(readr)
   library(ggplot2)
   library(gridExtra)
   library(data.table)
@@ -168,7 +169,7 @@ Now we make another vector with the meta data. We only need to grab the first
 element of the required vector.
 
 ```{r}
-meta.vec.df <- c(exp.df$exp.day[1],exp.df$batch[1],exp.df$decay.setting[1])
+meta.vec <- c(exp.df$exp.day[1],exp.df$batch[1],exp.df$decay.setting[1])
 ```
 
 Then we can stick these two vectors together and give them names.
@@ -197,17 +198,23 @@ build_WF_Row <- function(exp.df)
     meta.vec <- c(exp.df$exp.day[1],exp.df$batch[1],exp.df$decay.setting[1])
 
     full.row <- c(meta.vec,wf)
-
-    full.row.df <- data.frame(lapply(full.row, type.convert), stringsAsFactors=FALSE)
+    
+    # Having got a full row vector we want it as a data frame with
+    # a column for each element. The as.is stops the 'Day x' becoming a factor.
+    full.row.df <- data.frame(lapply(full.row, type.convert,as.is=TRUE), stringsAsFactors=FALSE)
+    
+    # We then set the names including the slightly odd t= pattern.
     names(full.row.df) <- c('ExpDay','Batch','DecaySetting'
                         ,'t=0','t=10','t=20','t=30','t=40','t=50'
                         ,'t=60','t=70','t=80','t=90','t=100')
+    
     return(full.row.df)
 }
 ```
 
 
-Now we'll build up a 4 row object with the data from the experiment. 
+Now we'll build up a 4 row object with the data from the experiment. We would do this
+in a for() loop or using lapply but for this example we'll do this manually.
 
 ```{r}
 full.exp.list <- list()
@@ -216,21 +223,22 @@ full.exp.list[[2]] <- build_WF_Row(d1.b5678.ds10)
 full.exp.list[[3]] <- build_WF_Row(d2.b1234.ds15)
 full.exp.list[[4]] <- build_WF_Row(d2.b5678.ds05)
 ```
-We have a list  but what we want it a data_frame. Use rbindlist from th data.table package
+We have a list of data_frames but what we want it a single data_frame. 
+Use rbindlist from th data.table package to achieve this. For some 
 
 ```{r}
 full.exp.df <- rbindlist(full.exp.list)
-full.exp.df$ExpDay <- as.character(full.exp.df$ExpDay)
 ```
 
 
-Let's check that looks as we expect
+Let's check that looks as we expect.
 
 
 ```{r}
 full.exp.df[,c('ExpDay','Batch','DecaySetting','t=0','t=10','t=90','t=100')]
 ```
 
+# Export the data
 We can now write this out to a .csv file so that you can prove to yourself
 that it is what you would expect.
 
@@ -238,11 +246,107 @@ I'll assume that you current directory is the project dir.
 
 ```{r}
 exp.file.name <- 'ExperimentFullData.csv'
-write.csv(full.exp.df,file = exp.file.name. row.names = FALSE )
+write.csv(full.exp.df,file = exp.file.name, row.names = FALSE )
+```
+
+# Import the data
+What we want to do now is show how you can read in a file in this format
+and construct an object that ggplot can use to produce graphs like those above.
+
+```{r}
+raw.exp.data <- read_csv(file = exp.file.name)
+```
+
+# Construct data for ggplot()
+
+What we want is a function that can take a row of meta data *and* waveform data
+and return a data_frame that can we can use in a bind_rows construct to form an
+object for ggplot().
+
+```{r}
+buildWaveformAndMetaData<-function(single.row)
+{
+    # Our first task is to split out the waveform from the metadata.
+    
+    wf <- select(single.row,contains('t='))
+    col.names <- names(wf)
+    
+    time.ms <- rep(NaN,length(col.names))
+    response <- rep(NaN,length(col.names))
+    waveform.df <- data_frame(time.ms,response)
+    for(count in 1:length(col.names))
+    {
+      waveform.df$time.ms[count] <- gsub('t=','',col.names[count])
+      waveform.df$response[count] <- as.numeric(wf[count])
+    }
+    
+    waveform.df$time.ms <- as.numeric(waveform.df$time.ms)
+
+    meta.data <- select(single.row,-contains('t='))
+    col.names <- names(meta.data)
+    
+    for(column.name in col.names)
+    {
+        waveform.df[[column.name]] <- rep(meta.data[[column.name]],nrow(waveform.df))
+    }
+    
+    return(waveform.df)
+}
+```
+
+Let's test this function
+
+```{r}
+single.row <- raw.exp.data[1,]
+
+one.row <- buildWaveformAndMetaData(single.row)
+one.row
+```
+
+Now do it for the whole .csv file.
+
+```{r}
+
+all.experimental.data <- NULL
+for(count in 1:nrow(raw.exp.data))
+{
+    single.row <- raw.exp.data[count,]
+
+    one.row.df <- buildWaveformAndMetaData(single.row)
+    
+    if(is.null(all.experimental.data))
+    {
+        all.experimental.data <- one.row.df 
+    }
+    else
+    {
+        all.experimental.data <- bind_rows(all.experimental.data,one.row.df)
+    }
+    
+}
+
+
 ```
 
 
+```{r}
+p <- ggplot(data=all.experimental.data,aes(x=time.ms,y=response,colour = as.factor(DecaySetting)))
+p <- p + geom_point()
+p <- p + geom_line()
+p <- p + labs(title='Experimental Response'
+                        ,x='Time (ms)', y='Response proportion'
+                        ,colour='Decay Setting')
+print(p)
+```
 
 
-
-
+```{r}
+p <- ggplot(data=all.experimental.data,aes(x=time.ms,y=response,colour = as.factor(DecaySetting)))
+p <- p + geom_point()
+p <- p + geom_line()
+p <- p + labs(title='Experimental Response [Panel: batch, experiment day]'
+                        ,x='Time (ms)', y='Response proportion'
+                        ,colour='Decay Setting')
+p <- p + facet_grid(ExpDay ~ Batch)
+print(p)
+```
