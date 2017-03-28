@@ -20,6 +20,11 @@ with meta data that describes the conditions at the time the waveform was captur
 This is an example of a complex data structure contained within a seemingly
 simple .csv file. This looks a lot trickier than it turns out to be :D.
 
+If you want to get to the answer quickly, use the menu to select 
+
++ Construct data for ggplot()
+    + Using dplyr::gather() in two lines
+
 ```{r setup, include=FALSE}
 #knitr::opts_chunk$set(echo = TRUE,fig.height=8,fig.width=12)
 knitr::opts_chunk$set(echo = TRUE)
@@ -402,6 +407,8 @@ gather.all.experimental.data$time.ms <- as.numeric(gsub('t=','',gather.all.exper
 
 ```
 
+## Using dplyr::gather() in two lines
+
 But in actual fact you can use gather() to process the *whole* data frame in a oner. This amazingly reduces the complete operation down to two lines!!
 
 In this first example we use the contains() function to scoop up all the timepoints.
@@ -478,6 +485,7 @@ p <- p + facet_grid(ExpDay ~ Batch)
 
 print(p)
 ```
+
 A slightly different version of this is to put the alpha setting only in the
 geom_line(). We also use point.size to control the point.size for the two different conditions. This allows the active points to stand out.
 
