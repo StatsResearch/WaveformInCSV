@@ -18,7 +18,7 @@ Each row of the .csv file will contain the complete 11 point waveform along
 with meta data that describes the conditions at the time the waveform was captured.
 
 This is an example of a complex data structure contained within a seemingly
-simple .csv file. This becomes a lot trickier than it looks.
+simple .csv file. This looks a lot trickier than it turns out to be :D.
 
 ```{r setup, include=FALSE}
 #knitr::opts_chunk$set(echo = TRUE,fig.height=8,fig.width=12)
@@ -70,21 +70,40 @@ for(decay.profile in all.decay.profiles)
 
 ```
 
-We now add in some batch and experiment day information
+We now add in some batch and experiment day information. Also add a column to control 
+the alpha setting. This setting is a reflection of the experiment day.
 
 ```{r}
 all.traces$batch <- ifelse(all.traces$decay.setting > 10,1234,5678)
 all.traces$exp.day <- ifelse(all.traces$decay.setting %% 10 == 0,'Day 1','Day 2')
+all.traces$alpha.setting <- ifelse(all.traces$decay.setting %% 10 == 0,1,0.3)
+all.traces$line.type <- ifelse(all.traces$decay.setting %% 10 == 0,'solid','dotdash')
+all.traces$line.size <- ifelse(all.traces$decay.setting %% 10 == 0,2,0.5)
 ```
 
+First plot sets alpha in the initial 
 
 ```{r}
-p <- ggplot(data=all.traces,aes(x=time.ms,y=response,colour = as.factor(decay.setting)))
-p <- p + geom_point()
-p <- p + geom_line()
+# p <- ggplot(data=all.traces,aes(x=time.ms,y=response
+#                                 ,colour = as.factor(decay.setting)
+#                                 ,alpha=as.factor(alpha.setting)))
+
+p <- ggplot(data=all.traces,aes(x=time.ms,y=response
+                                ,colour = as.factor(decay.setting)
+                                ,alpha=alpha.setting
+                                ,linetype=line.type))
+p <- p + geom_point(size=3)
+#p <- p + geom_line(size=2,aes(alpha=as.factor(alpha.setting)))
+p <- p + geom_line(aes(size=line.size))
 p <- p + labs(title='Experiment Response'
                         ,x='Time (ms)', y='Response proportion'
                         ,colour='Decay Setting')
+p <- p + guides(alpha=FALSE,linetype=FALSE,size=FALSE)
+#p <- p + scale_alpha_discrete(range = c(0.35, 1))
+p <- p + scale_alpha_continuous(range = c(0.2, 1))
+p <- p + scale_linetype_identity()
+p <- p + scale_size_identity()
+
 print(p)
 ```
 
@@ -149,8 +168,8 @@ d2.b5678.ds05 <- filter(all.traces, exp.day == 'Day 2', batch == 5678, decay.set
 
 For each of these objects we have 11 rows of 5 variables. We need to flatten this data
 into a single row. In actual fact we have 3 bits of meta data (decay setting, 
-batch and experiment day) and the 11 reading from the waveform 0 to 100 ms. We are going
-to construct 14 column row which we can write out in .csv format.
+batch and experiment day) and the 11 readings from the waveform 0 to 100 ms. We are going
+to construct a 14 column row which we can write out in .csv format.
 
 First we collect the waveform data into a single numeric vector.
 
@@ -213,8 +232,7 @@ build_WF_Row <- function(exp.df)
 ```
 
 
-Now we'll build up a 4 row object with the data from the experiment. We would do this
-in a for() loop or using lapply but for this example we'll do this manually.
+Now we'll build up a 4 row object with the data from the experiment. If this were real data from a reasonable size experiment we would do this in a for() loop or using lapply but for this example we'll do this manually.
 
 ```{r}
 full.exp.list <- list()
@@ -242,7 +260,7 @@ full.exp.df[,c('ExpDay','Batch','DecaySetting','t=0','t=10','t=90','t=100')]
 We can now write this out to a .csv file so that you can prove to yourself
 that it is what you would expect.
 
-I'll assume that you current directory is the project dir.
+I'll assume that your current directory is the project dir.
 
 ```{r}
 exp.file.name <- 'ExperimentFullData.csv'
@@ -258,6 +276,10 @@ raw.exp.data <- read_csv(file = exp.file.name)
 ```
 
 # Construct data for ggplot()
+
+We now show two ways to build up an object that we can use with ggplot().
+
+## The hard way
 
 What we want is a function that can take a row of meta data *and* waveform data
 and return a data_frame that can we can use in a bind_rows construct to form an
@@ -348,5 +370,138 @@ p <- p + labs(title='Experimental Response [Panel: batch, experiment day]'
                         ,x='Time (ms)', y='Response proportion'
                         ,colour='Decay Setting')
 p <- p + facet_grid(ExpDay ~ Batch)
+print(p)
+```
+
+## Using dplyr::gather()
+ 
+An alternative approach is to use the gather() function from dplyr.
+
+Here we show using gather() one row at a time.
+```{r}
+
+gather.all.experimental.data <- NULL
+for(count in 1:nrow(raw.exp.data))
+{
+    single.row <- raw.exp.data[count,]
+
+    one.row.df <- gather(single.row,value='response',key=time.pt,contains('t='))
+    
+    if(is.null(gather.all.experimental.data))
+    {
+        gather.all.experimental.data <- one.row.df 
+    }
+    else
+    {
+        gather.all.experimental.data <- bind_rows(gather.all.experimental.data,one.row.df)
+    }
+    
+}
+
+gather.all.experimental.data$time.ms <- as.numeric(gsub('t=','',gather.all.experimental.data$time.pt))
+
+```
+
+But in actual fact you can use gather() to process the *whole* data frame in a oner. This amazingly reduces the complete operation down to two lines!!
+
+In this first example we use the contains() function to scoop up all the timepoints.
+```{r}
+
+long.data <- gather(raw.exp.data,value='response',key=time.pt,contains('t='))
+long.data$time.ms <- as.numeric(gsub('t=','',long.data$time.pt))
+```
+Let's see the plot.
+
+```{r}
+p <- ggplot(data=long.data,aes(x=time.ms,y=response,colour = as.factor(DecaySetting)))
+p <- p + geom_point()
+p <- p + geom_line()
+p <- p + labs(title='Experimental Response from Long Data [Panel: batch, experiment day]'
+                        ,x='Time (ms)', y='Response proportion'
+                        ,colour='Decay Setting')
+p <- p + facet_grid(ExpDay ~ Batch)
+print(p)
+```
+
+
+In this next example we can specify the start and end points if we are interested in a particular section of the waveform.
+```{r}
+
+long.data.v2 <- gather(raw.exp.data,value='response',key=time.pt,`t=0`:`t=50`)
+long.data.v2$time.ms <- as.numeric(gsub('t=','',long.data.v2$time.pt))
+```
+
+Let's see the plot.
+
+```{r}
+p <- ggplot(data=long.data.v2,aes(x=time.ms,y=response,colour = as.factor(DecaySetting)))
+p <- p + geom_point()
+p <- p + geom_line()
+p <- p + labs(title='Experimental Response from Long Data V2 [Panel: batch, experiment day]'
+                        ,x='Time (ms)', y='Response proportion'
+                        ,colour='Decay Setting')
+p <- p + facet_grid(ExpDay ~ Batch)
+print(p)
+```
+Using the long.data object, let's add in the alpha, line type and size columns
+
+```{r}
+long.data$alpha.setting <- ifelse(long.data$DecaySetting %% 10 == 0,1,0.6)
+long.data$line.type <- ifelse(long.data$DecaySetting %% 10 == 0,'solid','dotdash')
+long.data$line.size <- ifelse(long.data$DecaySetting %% 10 == 0,1,0.5)
+long.data$point.size <- ifelse(long.data$DecaySetting %% 10 == 0,3,1)
+```
+
+Now do a facet plot as above but also show the use of subtitle and caption. Note the caption
+also has a theme() line to control size and font face.
+
+```{r}
+p <- ggplot(data=long.data,aes(x=time.ms,y=response
+                                            ,colour = as.factor(DecaySetting)
+                                            ,alpha=alpha.setting
+                                            ,linetype=line.type))
+p <- p + geom_point(size=3)
+p <- p + geom_line(aes(size=line.size))
+p <- p + labs(title='Experimental Response from Long Data [Panel: batch, experiment day]'
+                        ,subtitle='Using alpha, linetype and size'
+                        ,caption='Data Object: long.data'
+                        ,x='Time (ms)', y='Response proportion'
+                        ,colour='Decay Setting')
+p <- p + theme(plot.caption = element_text(size = 6,face = 'italic'))
+
+p <- p + guides(alpha=FALSE,linetype=FALSE,size=FALSE)
+p <- p + scale_alpha_continuous(range = c(0.2, 1))
+p <- p + scale_linetype_identity()
+p <- p + scale_size_identity()
+
+p <- p + facet_grid(ExpDay ~ Batch)
+
+print(p)
+```
+A slightly different version of this is to put the alpha setting only in the
+geom_line(). We also use point.size to control the point.size for the two different conditions. This allows the active points to stand out.
+
+
+
+```{r}
+p <- ggplot(data=long.data,aes(x=time.ms,y=response
+                                            ,colour = as.factor(DecaySetting)
+                                            ,linetype=line.type))
+p <- p + geom_point(aes(size=point.size))
+p <- p + geom_line(aes(size=line.size,alpha=alpha.setting))
+p <- p + labs(title='Experimental Response from Long Data [Panel: batch, experiment day]'
+                        ,subtitle='Using alpha, linetype and size'
+                        ,caption='Data Object: long.data'
+                        ,x='Time (ms)', y='Response proportion'
+                        ,colour='Decay Setting')
+p <- p + theme(plot.caption = element_text(size = 6,face = 'italic'))
+
+p <- p + guides(alpha=FALSE,linetype=FALSE,size=FALSE)
+p <- p + scale_alpha_continuous(range = c(0.5, 1))
+p <- p + scale_linetype_identity()
+p <- p + scale_size_identity()
+
+p <- p + facet_grid(ExpDay ~ Batch)
+
 print(p)
 ```
