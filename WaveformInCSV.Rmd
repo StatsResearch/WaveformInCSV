@@ -513,3 +513,12 @@ p <- p + facet_grid(ExpDay ~ Batch)
 
 print(p)
 ```
+
+
+# Session Info
+
+```{r}
+devtools::session_info()
+```
+
+That completes the lesson.
