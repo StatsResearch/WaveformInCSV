@@ -76,7 +76,7 @@ for(decay.profile in all.decay.profiles)
 ```
 
 We now add in some batch and experiment day information. Also add a column to control 
-the alpha setting. This setting is a reflection of the experiment day.
+the alpha setting. The alpha setting is a reflection of the experiment day.
 
 ```{r}
 all.traces$batch <- ifelse(all.traces$decay.setting > 10,1234,5678)
@@ -86,25 +86,19 @@ all.traces$line.type <- ifelse(all.traces$decay.setting %% 10 == 0,'solid','dotd
 all.traces$line.size <- ifelse(all.traces$decay.setting %% 10 == 0,2,0.5)
 ```
 
-First plot sets alpha in the initial 
+Let's do an initial plot. 
 
 ```{r}
-# p <- ggplot(data=all.traces,aes(x=time.ms,y=response
-#                                 ,colour = as.factor(decay.setting)
-#                                 ,alpha=as.factor(alpha.setting)))
-
 p <- ggplot(data=all.traces,aes(x=time.ms,y=response
                                 ,colour = as.factor(decay.setting)
                                 ,alpha=alpha.setting
                                 ,linetype=line.type))
 p <- p + geom_point(size=3)
-#p <- p + geom_line(size=2,aes(alpha=as.factor(alpha.setting)))
 p <- p + geom_line(aes(size=line.size))
 p <- p + labs(title='Experiment Response'
                         ,x='Time (ms)', y='Response proportion'
                         ,colour='Decay Setting')
 p <- p + guides(alpha=FALSE,linetype=FALSE,size=FALSE)
-#p <- p + scale_alpha_discrete(range = c(0.35, 1))
 p <- p + scale_alpha_continuous(range = c(0.2, 1))
 p <- p + scale_linetype_identity()
 p <- p + scale_size_identity()
@@ -112,7 +106,7 @@ p <- p + scale_size_identity()
 print(p)
 ```
 
-
+We now do a plot where we 'facet' (i.e. draw a separate panel) based on batch. 
 
 ```{r}
 p <- ggplot(data=all.traces,aes(x=time.ms,y=response,colour = as.factor(decay.setting)))
@@ -125,6 +119,7 @@ p <- p + facet_grid(. ~ batch)
 print(p)
 ```
 
+We can do more sub divisions by faceting on both batch and experiment day.
 
 ```{r}
 p <- ggplot(data=all.traces,aes(x=time.ms,y=response,colour = as.factor(decay.setting)))
