@@ -508,3 +508,13 @@ p <- p + facet_grid(ExpDay ~ Batch)
 
 print(p)
 ```
+
+
+# Session Info
+
+Record session information for better reproducibility.
+```{r}
+devtools::session_info()
+```
+
+That completes the lesson.
