@@ -512,6 +512,7 @@ print(p)
 
 # Session Info
 
+Record session information for better reproducibility.
 ```{r}
 devtools::session_info()
 ```
